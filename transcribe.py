@@ -103,7 +103,7 @@ def process(target, done=None, ldir=TMP):
 def run():
     os.makedirs(OUT, exist_ok=True); os.makedirs(TMP, exist_ok=True)
     ensure_deps()
-    args = sys.argv[2:]
+    args = sys.argv[2:] if sys.argv[1:2] == ['transcribe'] else sys.argv[1:]  # a.c run_lab replaces the cmd name with the script path; fallback_py kept it
     if not args:
         print('Usage: a transcribe <file|folder|recent [N] [folder]|new [folder]|log|watch|on|off|status>\n  file:   local path or remote:path/file.flac\n  folder: local dir or remote:path\n  recent [N] [folder]: N most recently modified audio files (default N=10, folder = Easy Voice Recorder)\n  new [folder]: every unlogged audio file in folder, newest first (default = Easy Voice Recorder)\n  log:    show transcription history\n  on|off|status: parakeet auto-transcribe service (status = live stream)  watch: run loop in foreground')
         return
