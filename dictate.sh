@@ -32,13 +32,14 @@ def pk(ph):  # parakeet: punctuated truth for the phrase, command words stripped
     s=OFF.create_stream();s.accept_waveform(16000,np.concatenate(ph));OFF.decode_stream(s)
     return " ".join(w for w in s.result.text.split() if norm(w) not in CMD)
 stop=threading.Event()
-def worker():
+def worker(nt=0):  # nt = no-type (:1111 omnibox mic): partials print to the server log, ydotool never fires
     p=subprocess.Popen(["parec","--rate=16000","--channels=1","--format=s16le","--latency-msec=30"],stdout=subprocess.PIPE)
     nfy("🎤 dictation ON — speak close to the mic",0)  # distance is the biggest lever on accuracy and it is not obvious (Sean 2026-08-31): measured 84% at his usual level vs 91% up close; the mic gain knob is inert on the MV7+, so proximity is the ONLY gain control
     st=ON.create_stream();scr="";com="";Rf="";nR=0;nw=0;ph=[];last=lastw=0.0;SESS=[];t0=time.localtime()
     def sync(new):  # make screen match: backspace the differing tail, retype — never crosses into finalized text (com is always a shared prefix)
         nonlocal scr
         if new==scr:return
+        if nt:print(new.replace("\n"," ⏎ "),flush=True);scr=new;return
         i=0
         while i<min(len(scr),len(new))and scr[i]==new[i]:i+=1
         if len(scr)-i:yd("key","-d","1",*["14:1","14:0"]*(len(scr)-i))
@@ -66,7 +67,7 @@ def worker():
             fin=pk(ph)if ph else""
             if fin:sync(com+fin);com=com+fin+" ";SESS.append(fin)
             Rf="";nR=0;nw=0;ph=[];last=lastw=0.0;ON.reset(st)
-            if cmd=="enter":yd("key","-d","4","28:1","28:0");scr=com=com.rstrip()+"\n";SESS.append("\n")
+            if cmd=="enter":nt or yd("key","-d","4","28:1","28:0");scr=com=com.rstrip()+"\n";SESS.append("\n")
             if cmd=="stop":break
     p.terminate()
     if ph:
@@ -85,7 +86,7 @@ while 1:
     if not cmd: continue
     if cmd.startswith("start"):
         stop.clear()
-        threading.Thread(target=worker,daemon=True).start()
+        threading.Thread(target=worker,args=("nt" in cmd,),daemon=True).start()
     elif cmd=="stop": stop.set()
 PY
 cmp -s $srv.tmp $srv && rm -f $srv.tmp || { mv $srv.tmp $srv; pkill -f a_dictate_srv.py; sleep .4; }
@@ -97,4 +98,4 @@ for M in sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8 sherpa-onnx-nemo-streaming-f
 done
 pgrep -f a_dictate_srv.py >/dev/null || setsid -f python3 $srv >$S.log 2>&1 </dev/null
 if [ -f $S.on ]; then rm -f $S.on; echo stop > $R
-else : > $S.on; echo start > $R; fi
+else : > $S.on; echo "start $1" > $R; fi
