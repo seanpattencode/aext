@@ -85,6 +85,8 @@ def worker(nt=0):  # nt = no-type (:1111 omnibox mic): partials print to the ser
     nfy("⏹ dictation OFF",1500)
     try: os.remove(ON_F)
     except OSError: pass
+try: os.remove(ON_F)  # a fresh server has no session: a stale .on (crash) must not turn `on` into a no-op
+except OSError: pass
 while 1:
     try: cmd=open(R).readline().strip()
     except OSError: time.sleep(.2); continue
@@ -103,5 +105,5 @@ for M in sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8 sherpa-onnx-nemo-streaming-f
     ( cd $CA && wget -q https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/$M.tar.bz2 && tar xf $M.tar.bz2 && rm -f $M.tar.bz2 ); }
 done
 pgrep -f a_dictate_srv.py >/dev/null || setsid -f python3 $srv >$S.log 2>&1 </dev/null
-if [ -f $S.on ]; then rm -f $S.on; echo stop > $R
-else : > $S.on; echo "start $1" > $R; fi
+if [ -f $S.on ]; then if [ "$2" = on ]; then echo mic > $R; else rm -f $S.on; echo stop > $R; fi  # $2 on|off (the #mic page, which starts itself on arrival) is idempotent: on while on just re-announces the mic; no $2 = toggle (F5, pad)
+elif [ "$2" != off ]; then : > $S.on; echo "start $1" > $R; fi
