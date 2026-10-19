@@ -11,7 +11,7 @@ if [ "$1" = bind ]; then c=$HOME/.config/sway/config
   grep -q 'F5 exec a dictate' "$c" || echo 'bindsym F5 exec a dictate' >> "$c"
   swaymsg bindsym F5 exec a dictate && echo 'F5 -> a dictate (tap to start/stop)'; exit; fi
 cat > $srv.tmp <<'PY'
-import os,subprocess,threading,time
+import json,os,subprocess,threading,time
 import numpy as np
 import sherpa_onnx
 CA=os.path.expanduser("~/.cache/a_dictate/")
@@ -28,14 +28,17 @@ R="/tmp/a_dictate.ctl"; ON_F="/tmp/a_dictate.on"; T=os.path.expanduser("~/a/adat
 norm=lambda w:w.strip(".,!?;:").lower(); CMD=("enter","stop")
 def yd(*a): subprocess.run(["ydotool",*a])
 def nfy(m,t): subprocess.Popen(["notify-send","-t",str(t),"-h","string:x-canonical-private-synchronous:adictate",m])  # fire-and-forget: a broken bus must never stall the audio loop
+J=lambda w:json.loads(subprocess.run(["pactl","-fjson","list",w],capture_output=True,text=True).stdout)
+def mic():  # the source parec's stream really sits on (a stream rule can move it off the default; 10-19 the default was the webcam, MV7 idle)
+    i=[o["source"]for o in J("source-outputs")if o["properties"].get("media.name")=="parec"]
+    return next((s["description"]for s in J("sources")if i and s["index"]==i[0]),"no mic")
 def pk(ph):  # parakeet: punctuated truth for the phrase, command words stripped
     s=OFF.create_stream();s.accept_waveform(16000,np.concatenate(ph));OFF.decode_stream(s)
     return " ".join(w for w in s.result.text.split() if norm(w) not in CMD)
 stop=threading.Event()
 def worker(nt=0):  # nt = no-type (:1111 omnibox mic): partials print to the server log, ydotool never fires
     p=subprocess.Popen(["parec","--rate=16000","--channels=1","--format=s16le","--latency-msec=30"],stdout=subprocess.PIPE)
-    nfy("🎤 dictation ON — speak close to the mic",0)  # distance is the biggest lever on accuracy and it is not obvious (Sean 2026-08-31): measured 84% at his usual level vs 91% up close; the mic gain knob is inert on the MV7+, so proximity is the ONLY gain control
-    st=ON.create_stream();scr="";com="";Rf="";nR=0;nw=0;ph=[];last=lastw=0.0;SESS=[];t0=time.localtime()
+    st=ON.create_stream();scr="";com="";Rf="";nR=0;nw=0;ph=[];last=lastw=0.0;SESS=[];t0=time.localtime();m=""
     def sync(new):  # make screen match: backspace the differing tail, retype — never crosses into finalized text (com is always a shared prefix)
         nonlocal scr
         if new==scr:return
@@ -48,6 +51,7 @@ def worker(nt=0):  # nt = no-type (:1111 omnibox mic): partials print to the ser
     while not stop.is_set():
         c=p.stdout.read(3200)
         if not c:break
+        if not m:m=mic();nfy("🎤 dictation ON · "+m+" — speak close to the mic",0);nt and print("# listening · "+m,flush=True)  # distance is the biggest lever on accuracy and it is not obvious (Sean 2026-08-31): measured 84% at his usual level vs 91% up close; the mic gain knob is inert on the MV7+, so proximity is the ONLY gain control
         a=np.frombuffer(c,np.int16).astype(np.float32)/32768.
         ph.append(a);st.accept_waveform(16000,a)
         while ON.is_ready(st):ON.decode_stream(st)
