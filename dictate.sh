@@ -10,8 +10,8 @@ S=/tmp/a_dictate R=$S.ctl srv=/tmp/a_dictate_srv.py
 if [ "$1" = bind ]; then c=$HOME/.config/sway/config
   grep -q 'F5 exec a dictate' "$c" || echo 'bindsym F5 exec a dictate' >> "$c"
   swaymsg bindsym F5 exec a dictate && echo 'F5 -> a dictate (tap to start/stop)'; exit; fi
-if [ "$1" = mic ]; then [ "$2" ] || { pactl list sources | awk -v d="$(pactl get-default-source)" '/^\tName: /{n=$2}/^\tDescription: /&&n!~/\.monitor$/{sub(/^\tDescription: /,"");print (n==d?"*":"")n"\t"$0}'; exit; }  # mic: inputs, * = default; omni caps output at 8K so no json
-  pactl set-default-source "$2"; for i in $(pactl list short source-outputs | cut -f1); do pactl move-source-output $i "$2"; done  # mic <source>: default + live streams; srv re-announces
+if [ "$1" = mic ]; then [ "$2" ] || { pactl list sources | awk -v d="$(pactl get-default-source)" '/^\tName: /{n=$2}/^\tDescription: /&&n!~/\.monitor$/{print n"\t"substr($0,15)(n==d?"\t*":"")}'; exit; }  # * = default; omni caps output at 8K, so no json
+  pactl set-default-source "$2"; pactl list short source-outputs | cut -f1 | xargs -rI% pactl move-source-output % "$2"  # default + live streams; srv re-announces
   pgrep -f a_dictate_srv.py >/dev/null && echo mic > $R; exit; fi
 cat > $srv.tmp <<'PY'
 import json,os,subprocess,threading,time
@@ -32,9 +32,7 @@ norm=lambda w:w.strip(".,!?;:").lower(); CMD=("enter","stop")
 def yd(*a): subprocess.run(["ydotool",*a])
 def nfy(m,t): subprocess.Popen(["notify-send","-t",str(t),"-h","string:x-canonical-private-synchronous:adictate",m])  # fire-and-forget: a broken bus must never stall the audio loop
 J=lambda w:json.loads(subprocess.run(["pactl","-fjson","list",w],capture_output=True,text=True).stdout)
-def mic():  # the source parec's stream really sits on (a stream rule can move it off the default; 10-19 the default was the webcam, MV7 idle)
-    i=[o["source"]for o in J("source-outputs")if o["properties"].get("media.name")=="parec"]
-    return next((s["description"]for s in J("sources")if i and s["index"]==i[0]),"no mic")
+def mic():i={o["source"]for o in J("source-outputs")if o["properties"].get("media.name")=="parec"};return next((s["description"]for s in J("sources")if s["index"]in i),"no mic")  # parec's real source (a rule can move it off the default)
 def pk(ph):  # parakeet: punctuated truth for the phrase, command words stripped
     s=OFF.create_stream();s.accept_waveform(16000,np.concatenate(ph));OFF.decode_stream(s)
     return " ".join(w for w in s.result.text.split() if norm(w) not in CMD)
