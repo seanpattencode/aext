@@ -10,6 +10,9 @@ S=/tmp/a_dictate R=$S.ctl srv=/tmp/a_dictate_srv.py
 if [ "$1" = bind ]; then c=$HOME/.config/sway/config
   grep -q 'F5 exec a dictate' "$c" || echo 'bindsym F5 exec a dictate' >> "$c"
   swaymsg bindsym F5 exec a dictate && echo 'F5 -> a dictate (tap to start/stop)'; exit; fi
+if [ "$1" = mic ]; then [ "$2" ] || { pactl list sources | awk -v d="$(pactl get-default-source)" '/^\tName: /{n=$2}/^\tDescription: /&&n!~/\.monitor$/{sub(/^\tDescription: /,"");print (n==d?"*":"")n"\t"$0}'; exit; }  # mic: inputs, * = default; omni caps output at 8K so no json
+  pactl set-default-source "$2"; for i in $(pactl list short source-outputs | cut -f1); do pactl move-source-output $i "$2"; done  # mic <source>: default + live streams; srv re-announces
+  pgrep -f a_dictate_srv.py >/dev/null && echo mic > $R; exit; fi
 cat > $srv.tmp <<'PY'
 import json,os,subprocess,threading,time
 import numpy as np
@@ -92,6 +95,7 @@ while 1:
         stop.clear()
         threading.Thread(target=worker,args=("nt" in cmd,),daemon=True).start()
     elif cmd=="stop": stop.set()
+    elif cmd=="mic": os.path.exists(ON_F)and print("# listening · "+mic(),flush=True)
 PY
 cmp -s $srv.tmp $srv && rm -f $srv.tmp || { mv $srv.tmp $srv; pkill -f a_dictate_srv.py; sleep .4; }
 [ -p $R ] || { rm -f $R; mkfifo $R; }
